@@ -1,8 +1,7 @@
+from unittest.mock import patch
 from flask import Flask, jsonify, request
 from flask_restful import Api, Resource, reqparse, abort
 from flask_cors import CORS
-from flask_pymongo import pymongo
-from pymongo import response
 import app.db_config as database
 
 app = Flask(__name__)
@@ -18,6 +17,16 @@ post_students_args.add_argument("image", type=str, help="ERROR you need to add t
 post_students_args.add_argument("group", type=str, required = False)
 post_students_args.add_argument("career", type=str, required = False)
 
+patch_students_args = reqparse.RequestParser()
+
+patch_students_args.add_argument("id", type=int, help="ERROR id value needs to be an integer", required = True)
+patch_students_args.add_argument("first_name", type=str, help="ERROR first_name is required", required = True)
+patch_students_args.add_argument("last_name", type=str, help="ERROR last_name is required", required = True)
+patch_students_args.add_argument("image", type=str, help="ERROR you need to add the image url", required = True)
+patch_students_args.add_argument("group", type=str, required = False)
+patch_students_args.add_argument("career", type=str, required = False)
+
+
 class Test(Resource):
 
     def get(self):
@@ -30,16 +39,6 @@ class Student(Resource):
         response = database.db.students.find_one({"id": id})
         del response['_id']
         return jsonify(response)
-
-class Students(Resource):
-
-    def get(self):
-        response = list(database.db.students.find())
-        students = []
-        for student in response:
-            del student['_id']
-            students.append(student)
-        return jsonify(students)
 
     def post(self):
         args = post_students_args.parse_args()
@@ -71,11 +70,28 @@ class Students(Resource):
         )
         return jsonify(args)
 
-    def patch(self):
-        pass
+    def patch(self, id):
+        student = self.abort_if_not_exists(id)
+        args = patch_students_args.parse_args()
+        database.db.students.update_one(
+            {'id': id},
+            {'$set': {
+                'first_name': args['first_name'],
+                'last_name': args['last_name'],
+                'image': args['image'],
+                'group': args['group'],
+                'career': args['career'],
+            }}
+        )
+        student = self.abort_if_not_exists(id)
+        del student['_id']
+        return jsonify(student)
 
     def delete(self):
-        pass
+        student = self.abort_if_not_exists(id)
+        database.db.students.delete_one({'id': id})
+        del student['_id']
+        return jsonify({'deleted': student})
 
     def abort_if_id_exists(self, id):
         if database.db.students.find_one({'id': id}):
@@ -88,9 +104,21 @@ class Students(Resource):
         else:
             return student
 
+class Students(Resource):
+
+    def get(self):
+        response = list(database.db.students.find())
+        students = []
+        for student in response:
+            del student['_id']
+            students.append(student)
+        return jsonify(students)
+
+
+
 api.add_resource(Test, '/test/')
-api.add_resource(Students, '/students/', '/students/<int:id>/')
-api.add_resource(Student, '/students/<int:id>/')
+api.add_resource(Students, '/students/')
+api.add_resource(Student, '/student/', '/student/<int:id>/')
 
 if __name__ == '__main__':
     app.run(load_dotenv=True, port=8080)
